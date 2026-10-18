@@ -1,7 +1,9 @@
 name: build-ffmpeg
 on:
   push:
-    branches: main
+    branches:
+      - main
+      - macos11-arm64
     paths-ignore:
       - '**.md'
       - '**.rst'
@@ -47,12 +49,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
+          # Two arm64 vendor tarballs: macOS 11.0 for the 11.0 wheel and 14.0
+          # for the default wheel. The variant suffix keeps both assets distinct.
+          - os: macos-15
             arch: arm64
             shell: bash
+            macos_min: "14.0"
+            variant: macos14
+          - os: macos-15
+            arch: arm64
+            shell: bash
+            macos_min: "11.0"
+            variant: macos11
           - os: macos-15-intel
             arch: x86_64
             shell: bash
+            macos_min: "11.0"
           - os: ubuntu-24.04-arm
             arch: aarch64
             shell: bash
@@ -84,12 +96,7 @@ jobs:
           path: source
       - name: Set deployment target
         if: runner.os == 'macOS'
-        run: |
-          if [ "${{ matrix.arch }}" = "x86_64" ]; then
-            echo "MACOSX_DEPLOYMENT_TARGET=11.0" >> $GITHUB_ENV
-          else
-            echo "MACOSX_DEPLOYMENT_TARGET=14.0" >> $GITHUB_ENV
-          fi
+        run: echo "MACOSX_DEPLOYMENT_TARGET=${{ matrix.macos_min }}" >> $GITHUB_ENV
       - name: Install packages for macOS
         if: runner.os == 'macOS'
         run: |
@@ -120,10 +127,14 @@ jobs:
           pip install cibuildwheel delvewheel
           cibuildwheel --output-dir output
           rm -f output/*.whl
+      - name: Rename macOS arm64 tarball
+        if: runner.os == 'macOS' && matrix.arch == 'arm64'
+        run: |
+          mv output/ffmpeg-macos-arm64.tar.gz "output/ffmpeg-macos-arm64-${{ matrix.variant }}.tar.gz"
       - name: Upload FFmpeg
         uses: actions/upload-artifact@v6
         with:
-          name: output-${{ matrix.os }}
+          name: output-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.variant || 'default' }}
           path: output/
 
   cross-build:
